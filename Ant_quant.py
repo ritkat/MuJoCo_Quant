@@ -1,17 +1,20 @@
 # Write a python script to train a MuJoCo ant agent using the PPO algorithm.
-import gym
+import gymnasium as gym
 import numpy as np
 import torch as th
 import torch.nn as nn
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticPolicy
-from Quantization_utils import QuantAct, QuantLinear, nonlinearity
+from Quantization_utils.quant_modules import *
+from Quantization_utils.quant_utils import *
+from stable_baselines3.common.callbacks import EvalCallback
 
 
 class QuantizedAntPolicy(nn.Module):
-    def __init__(self, model, cfg):
+    def __init__(self, model):
         super().__init__()
-        self.activation = nonlinearity(cfg)
+        # self.activation = nonlinearity(cfg)
+        self.activation = nn.ReLU()
 
         self.act1 = QuantAct()
         self.fc1 = QuantLinear()
@@ -28,65 +31,84 @@ class QuantizedAntPolicy(nn.Module):
         x, _ = self.act3(x, scale_acts, scale_weights)
         x = self.fc3(x)
         return x
-    
+
 class QuantizedActorCriticPolicy(ActorCriticPolicy):
     def __init__(self, observation_space, action_space, lr_schedule, cfg, **kwargs):
+        self.cfg = cfg
         super().__init__(observation_space, action_space, lr_schedule, **kwargs)
 
-        input_dim = self.features_extractor.features_dim
-        output_dim = self.action_net.out_features  # Typically equals action_space.shape[0]
-        obs_dim = observation_space.shape[0]
-        act_dim = action_space.shape[0]
+    def _build_mlp_extractor(self):
+        # Use quantized networks here
+
+        obs_dim = self.observation_space.shape[0]
+        act_dim = self.action_space.shape[0]
+
 
         feed_forward = nn.Sequential(
-        nn.Linear(obs_dim, 128),      # model[0]
-        nonlinearity(cfg),            # model[1]
-        nn.Linear(128, act_dim)       # model[2]
+            nn.Linear(obs_dim, 128),      # model[0]
+            nn.ReLU(),            # model[1]
+            nn.Linear(128, act_dim)       # model[2]
         )
 
-        self.mlp_extractor.policy_net = QuantizedAntPolicy(input_dim, output_dim, cfg)
-        self.mlp_extractor.value_net = QuantizedAntPolicy(input_dim, 1, cfg)
+        policy_net = QuantizedAntPolicy(feed_forward)  # You can pass a real model if needed
+        value_net = feed_forward   # Or define a different one if needed
 
-        self._build(lr_schedule)
+        # This sets up the extractor properly
+        self.mlp_extractor = nn.Module()
+        self.mlp_extractor.policy_net = policy_net
+        self.mlp_extractor.value_net = value_net
 
+        # Set required attributes so SB3 knows the output dimensions
+        self.latent_dim_pi = act_dim
+        self.latent_dim_vf = 1
 
 def main():
     # Create the MuJoCo ant environment
-    env = gym.make('Ant-v2')
+    env = gym.make('Ant-v5')
+    eval_env = gym.make('Ant-v5')
 
-    # Initialize the PPO agent
-    model = PPO('MlpPolicy', env, verbose=1)
+    # Create a dummy config for quantization (customize as needed)
+    cfg = {
+        "quant_act": True,
+        "quant_weights": True,
+        "activation": "relu",
+    }
 
-    # I also want to customize the architecture and want to add a custom actor
-    # and critic network. This can be done by defining a custom policy.
-    
-    class CustomActorCriticPolicy(ActorCriticPolicy):
-        def __init__(self, *args, **kwargs):
-            super(CustomActorCriticPolicy, self).__init__(*args, **kwargs)
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path="./logs/best_model/",
+        log_path="./logs/results/",
+        eval_freq=5000,
+        deterministic=True,
+        render=False
+    )
 
-        def _build_mlp_extractor(self):
-            # Here you can customize the MLP architecture
 
-            return super()._build_mlp_extractor()
-    # Use the custom policy in the PPO agent
-    model = PPO(CustomActorCriticPolicy, env, verbose=1)
-
+    # Define PPO agent with your quantized policy
+    model = PPO(
+        policy=QuantizedActorCriticPolicy,
+        env=env,
+        policy_kwargs={"cfg": cfg},
+        verbose=1
+    )
 
     # Train the agent
-    model.learn(total_timesteps=100000)
+    model.learn(total_timesteps=1000000, callback=eval_callback)
 
     # Save the trained model
-    model.save("ppo_ant")
+    model.save("ppo_ant_quant")
 
-    # Optionally, you can test the trained agent
-    obs = env.reset()
+    # Test the trained agent
+    obs, _ = eval_env.reset()
+    obs, _ = env.reset()
     for _ in range(1000):
         action, _states = model.predict(obs)
-        obs, rewards, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         env.render()
-        if done:
-            obs = env.reset()
+        if terminated or truncated:
+            obs, _ = env.reset()
     env.close()
+
 if __name__ == "__main__":
     main()
 
