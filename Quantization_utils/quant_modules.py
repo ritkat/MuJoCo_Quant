@@ -129,9 +129,9 @@ class QuantLinear(Module):
         prev_act_scaling_factor = prev_act_scaling_factor.view(1, -1)
         x_int = x / prev_act_scaling_factor
         # np.savez('ne_inp_l1_verification.npz', data=x_int.cpu().numpy())
-        np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'.npz', data=x_int.cpu().numpy())
-        np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'_weight.npz', data=self.weight_integer.cpu().numpy())
-        np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'_bias.npz', data=self.bias_integer.cpu().numpy())
+        # np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'.npz', data=x_int.cpu().numpy())
+        # np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'_weight.npz', data=self.weight_integer.cpu().numpy())
+        # np.savez('/home/ritwik/firefly/swarm_rl/Firefly_Model_04052025/'+name+'_bias.npz', data=self.bias_integer.cpu().numpy())
         correct_output_scale = bias_scaling_factor[0].view(1, -1)
 
         return ste_round.apply(
