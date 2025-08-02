@@ -18,6 +18,14 @@ from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 import imageio
 from datetime import datetime
 import os
+
+# Add arguments for the script
+import argparse
+parser = argparse.ArgumentParser(description="Train a PPO agent on MuJoCo Ant environment with quantization.")
+parser.add_argument("--env", type=str, default="Ant", help="Environment to train on (default: Ant).")
+
+args = parser.parse_args()
+
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -69,7 +77,7 @@ class QuantizedAntFinal(nn.Module):
 
         return x
 
-class QuantizedAntPolicy(nn.Module):
+class QuantizedPolicy(nn.Module):
     def __init__(self, model):
         super().__init__()
         # self.activation = nonlinearity(cfg)
@@ -127,7 +135,7 @@ class QuantizedMlpExtractor(MlpExtractor):
             nn.ReLU()
         )
         # Replace or wrap the networks with quantized versions
-        self.policy_net = QuantizedAntPolicy(feed_forward)
+        self.policy_net = QuantizedPolicy(feed_forward)
         self.value_net = feed_forward
 
     def forward_actor(self, features: th.Tensor):
@@ -255,10 +263,22 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
         entropy = distribution.entropy()
         return values, log_prob, entropy
 
+LOG_PATH = f"./logs/{args.env}/results/128_128/Alpha_0.5_1/"
+
 def main():
     # Create the MuJoCo ant environment
-    env = gym.make('Ant-v5')
-    eval_env = gym.make('Ant-v5')
+    if args.env == "Ant":
+        env = gym.make('Ant-v5')
+        eval_env = gym.make('Ant-v5')
+    elif args.env == "HalfCheetah":
+        env = gym.make('HalfCheetah-v4')
+        eval_env = gym.make('HalfCheetah-v4')
+    elif args.env == "BipedalWalker":
+        env = gym.make('BipedalWalker-v3')
+        eval_env = gym.make('BipedalWalker-v3')
+    elif args.env == "Walker2d":
+        env = gym.make('Walker2d-v5')
+        eval_env = gym.make('Walker2d-v5')
 
     # Create a dummy config for quantization (customize as needed)
     cfg = {
@@ -269,8 +289,8 @@ def main():
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./logs/best_model/",
-        log_path="./logs/results/128_128/",
+        best_model_save_path="./logs/Ant/best_model/",
+        log_path=LOG_PATH,
         eval_freq=10000,
         deterministic=True,
         render=False
@@ -289,14 +309,16 @@ def main():
     model.learn(total_timesteps=10000000, callback=eval_callback)
 
     # Save the trained model
-    model.save("ppo_ant_quant")
+    model.save("ppo_quant")
 
-    # if args.env == "Ant":
-    render_env = gym.make("Ant-v5", render_mode="rgb_array")
-        # render_env = TimeAwareWrapper(render_env)
-    # if args.env == "HalfCheetah":
-    #     render_env = gymx.make("HalfCheetah-v4", render_mode="rgb_array")
-    #     render_env = TimeAwareWrapper(render_env)
+    if args.env == "Ant":
+        render_env = gym.make("Ant-v5", render_mode="rgb_array")
+    elif args.env == "HalfCheetah":
+        render_env = gym.make("HalfCheetah-v4", render_mode="rgb_array")
+    elif args.env == "BipedalWalker":
+        render_env = gym.make("BipedalWalker-v3", render_mode="rgb_array")
+    elif args.env == "Walker2d":
+        render_env = gym.make('Walker2d-v5', render_mode="rgb_array")
 
     obs, _ = render_env.reset()
 
