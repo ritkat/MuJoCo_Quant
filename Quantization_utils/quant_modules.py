@@ -164,7 +164,7 @@ class QuantAct(Module):
 
     def __init__(self,
                  activation_bit=8,
-                 act_range_momentum=0.95,
+                 act_range_momentum=0.75,
                  full_precision_flag=False,
                  running_stat=True,
                  quant_mode="symmetric",
@@ -354,7 +354,7 @@ class QuantAct_Concat(Module):
 
     def __init__(self,
                  activation_bit=8,
-                 act_range_momentum=0.95,
+                 act_range_momentum=0.75,
                  full_precision_flag=False,
                  running_stat=True,
                  quant_mode="symmetric",
