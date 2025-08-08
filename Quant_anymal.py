@@ -320,15 +320,16 @@ def main():
         policy=QuantizedActorCriticPolicy,
         env=env,
         verbose=1,
-        learning_rate=5e-5,
+        learning_rate=7e-5,
         vf_coef=0.5,
+        clip_range=0.25,
         # clip_range_vf=0.2,
         policy_kwargs={"cfg": cfg},
         tensorboard_log="./ppo_tensorboard/"
     )
     eval_callback = EvalCallback(
         env,
-        best_model_save_path="./logs/best_model_quant_alpha_0.75/",
+        best_model_save_path="./logs/best_model_quant_alpha_0.5_lr_7e5_clip_0.25/",
         log_path="./logs/results/128_128/",
         eval_freq=10000,
         deterministic=True,

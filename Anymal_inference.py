@@ -6,6 +6,10 @@ from importlib_resources import files
 # Import your environment class
 from env_utils import AnymalEnv  # Replace with actual path/module
 from mujoco_menagerie import anybotics_anymal_c
+import os
+os.environ["MUJOCO_GL"]="osmesa"
+os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
+
 
 model_dir = files(anybotics_anymal_c)
 xml_path  = model_dir / "scene.xml"
@@ -23,10 +27,10 @@ env_any = gym.make(
         max_episode_steps=1_000,
         include_cfrc_ext_in_observation=True,
         exclude_current_positions_from_observation=False,
-        render_mode="rgb_array"                 # “rgb_array” for headless
+        render_mode="human"                 # “rgb_array” for headless
     )
 # --- Load trained model ---
-model = PPO.load("/home/ritwik/MuJoCo_Quant/logs/best_model_lr_5e5/best_model.zip", env=env_any)
+model = PPO.load("./logs/best_model_lr_5e5/best_model", env=env_any)
 
 # --- Create environment for rendering ---
 env = env_any
@@ -43,9 +47,9 @@ while not done and timestep < 1000:
     done = terminated or truncated
     total_reward += reward
 
-    # frame = env.render()
-    # print("render")
-    # frames.append(frame)
+    frame = env.render()
+    print("render")
+    frames.append(frame)
 
     timestep += 1
 
