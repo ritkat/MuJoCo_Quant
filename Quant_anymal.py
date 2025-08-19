@@ -86,7 +86,7 @@ class QuantizedAntFinal(nn.Module):
         self.act1 = QuantAct()
         self.fc1 = QuantLinear()
         self.fc1.set_param(model[0])
-        self.act2 = QuantAct(quant_mode="symmetric")
+        self.act2 = QuantAct(quant_mode="symmetric", act_range_momentum=-1)
         # self.fc2.set_param(model[2])
         # self.fc3.set_param(model[2])
 
@@ -103,7 +103,7 @@ class QuantizedAntPolicy(nn.Module):
         # self.activation = nonlinearity(cfg)
         self.activation = nn.ReLU()
 
-        self.act1 = QuantAct()
+        self.act1 = QuantAct(act_range_momentum=-1)
         self.fc1 = QuantLinear()
         self.act2 = QuantAct(quant_mode="asymmetric")
         self.fc2 = QuantLinear()
@@ -149,9 +149,9 @@ class QuantizedMlpExtractor(MlpExtractor):
         super().__init__(feature_dim, net_arch, activation_fn, device)
 
         feed_forward = nn.Sequential(
-            nn.Linear(feature_dim, 128),      # model[0]
+            nn.Linear(feature_dim, 512),      # model[0]
             nn.ReLU(),            # model[1]
-            nn.Linear(128, 128), 
+            nn.Linear(512, 512), 
             nn.ReLU()
         )
         # Replace or wrap the networks with quantized versions
@@ -187,7 +187,7 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
 
         self.mlp_extractor = QuantizedMlpExtractor(
             self.features_dim,
-            net_arch= dict(pi=[128, 128], vf=[128, 128]),
+            net_arch= dict(pi=[512, 512], vf=[512, 512]),
             activation_fn=self.activation_fn,
             device=self.device,
         )
@@ -320,16 +320,17 @@ def main():
         policy=QuantizedActorCriticPolicy,
         env=env,
         verbose=1,
-        learning_rate=7e-5,
+        learning_rate=5e-5,
+        # ent_coef=0.1,
         vf_coef=0.5,
-        clip_range=0.25,
+        clip_range=0.2,
         # clip_range_vf=0.2,
         policy_kwargs={"cfg": cfg},
         tensorboard_log="./ppo_tensorboard/"
     )
     eval_callback = EvalCallback(
         env,
-        best_model_save_path="./logs/best_model_quant_alpha_0.5_lr_7e5_clip_0.25/",
+        best_model_save_path="./logs/best_model_quant_alpha_0.95_lr_5e5_nn512_io_scale_-1/",
         log_path="./logs/results/128_128/",
         eval_freq=10000,
         deterministic=True,
@@ -337,7 +338,7 @@ def main():
     )
 
     obs, info = env.reset()
-    model = PPO.load("/home/ritwik/MuJoCo_Quant/logs/best_model_quant_alpha_0.75/best_model.zip", env=env)
+    # model = PPO.load("/home/ritwik/MuJoCo_Quant/logs/best_model_quant_alpha_0.75/best_model.zip", env=env)
     model.learn(total_timesteps=10000000, callback=eval_callback)
     frames = []
     for _ in range(2_000):                    # quick smoke-test

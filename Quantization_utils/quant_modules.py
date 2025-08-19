@@ -164,7 +164,7 @@ class QuantAct(Module):
 
     def __init__(self,
                  activation_bit=8,
-                 act_range_momentum=0.75,
+                 act_range_momentum=0.95,
                  full_precision_flag=False,
                  running_stat=True,
                  quant_mode="symmetric",
@@ -213,6 +213,22 @@ class QuantAct(Module):
         """
         fix the activation range by setting running stat to False
         """
+        self.running_stat = False
+        self.fix_flag = True
+
+    def fix_i(self):
+        """
+        fix the activation range by setting running stat to False
+        """
+        self.fixi = True
+        self.running_stat = False
+        self.fix_flag = True
+
+    def fix_o(self):
+        """
+        fix the activation range by setting running stat to False
+        """
+        self.fixo = True
         self.running_stat = False
         self.fix_flag = True
 

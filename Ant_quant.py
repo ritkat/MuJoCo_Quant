@@ -22,6 +22,8 @@ os.environ["MUJOCO_GL"] = "egl"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+FIX_SCALE = True
+
 Schedule = Callable[[float], float]
 
 class QuantizedDistribution(DiagGaussianDistribution):
@@ -58,7 +60,10 @@ class QuantizedAntFinal(nn.Module):
         self.act1 = QuantAct()
         self.fc1 = QuantLinear()
         self.fc1.set_param(model[0])
-        self.act2 = QuantAct(quant_mode="symmetric")
+        if FIX_SCALE==True:
+            self.act2 = QuantAct(quant_mode="symmetric", act_range_momentum=-1)
+        else:
+            self.act2= QuantAct(quant_mode="symmetric")
         # self.fc2.set_param(model[2])
         # self.fc3.set_param(model[2])
 
@@ -74,8 +79,10 @@ class QuantizedAntPolicy(nn.Module):
         super().__init__()
         # self.activation = nonlinearity(cfg)
         self.activation = nn.ReLU()
-
-        self.act1 = QuantAct()
+        if FIX_SCALE==True:
+            self.act1 = QuantAct(act_range_momentum=-1)
+        else:
+            self.act1 = QuantAct()
         self.fc1 = QuantLinear()
         self.act2 = QuantAct(quant_mode="asymmetric")
         self.fc2 = QuantLinear()
@@ -269,8 +276,8 @@ def main():
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./logs/best_model/",
-        log_path="./logs/results/128_128/",
+        best_model_save_path="./logs_ant/best_model_fixscale_1/",
+        log_path="./logs_ant/results_1/128_128/",
         eval_freq=10000,
         deterministic=True,
         render=False
@@ -282,7 +289,8 @@ def main():
         policy=QuantizedActorCriticPolicy,
         env=env,
         policy_kwargs={"cfg": cfg},
-        verbose=1
+        verbose=1,
+        tensorboard_log="./ppo_tensorboard_ant/"
     )
 
     # Train the agent
