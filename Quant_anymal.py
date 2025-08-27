@@ -320,16 +320,17 @@ def main():
         policy=QuantizedActorCriticPolicy,
         env=env,
         verbose=1,
-        learning_rate=7e-5,
+        learning_rate=5e-5,
         vf_coef=0.5,
-        clip_range=0.25,
+        ent_coef=0.01,
+        clip_range=0.2,
         # clip_range_vf=0.2,
         policy_kwargs={"cfg": cfg},
         tensorboard_log="./ppo_tensorboard/"
     )
     eval_callback = EvalCallback(
         env,
-        best_model_save_path="./logs/best_model_quant_alpha_0.5_lr_7e5_clip_0.25/",
+        best_model_save_path="./logs/best_model_quant_alpha_0.99_lr_5e5_ent_coef_0.01/",
         log_path="./logs/results/128_128/",
         eval_freq=10000,
         deterministic=True,
@@ -337,7 +338,7 @@ def main():
     )
 
     obs, info = env.reset()
-    model = PPO.load("/home/ritwik/MuJoCo_Quant/logs/best_model_quant_alpha_0.75/best_model.zip", env=env)
+    #model = PPO.load("/home/ritwik/MuJoCo_Quant/logs/best_model_quant_alpha_0.75/best_model.zip", env=env)
     model.learn(total_timesteps=10000000, callback=eval_callback)
     frames = []
     for _ in range(2_000):                    # quick smoke-test
