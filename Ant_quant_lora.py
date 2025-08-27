@@ -4,7 +4,6 @@ from gymnasium import spaces
 import numpy as np
 import torch as th
 import torch.nn as nn
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticPolicy
 from Quantization_utils.quant_modules import *
@@ -14,11 +13,11 @@ from stable_baselines3.common.torch_layers import MlpExtractor
 from stable_baselines3.common.distributions import DiagGaussianDistribution
 from stable_baselines3.common.preprocessing import get_action_dim
 from functools import partial
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from typing import Callable, Dict, Any, Optional
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 import imageio
 from datetime import datetime
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 import os
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -90,9 +89,12 @@ class QuantizedAntPolicy(nn.Module):
         self.fc2 = QuantLinear()
         self.act3 = QuantAct(quant_mode="asymmetric")
         self.fc3 = QuantLinear()
+        self.act4 = QuantAct(quant_mode="symmetric")
+        self.fc4 = QuantLinear()
 
         self.fc1.set_param(model[0])
         self.fc2.set_param(model[2])
+        self.fc3.set_param(model[3])
         # self.fc3.set_param(model[2])
         
 
@@ -102,10 +104,12 @@ class QuantizedAntPolicy(nn.Module):
         x = self.activation(x)
         x, act_scaling_factor1 = self.act2(x, act_scaling_factor, fc_scaling_factor)
         x, x_i, fc_scaling_factor1 = self.fc2(x, act_scaling_factor1)
+        x, act_scaling_factor2 = self.act3(x, act_scaling_factor1, fc_scaling_factor1)
+        x, x_i, fc_scaling_factor2 = self.fc3(x, act_scaling_factor2)
         x = self.activation(x)
         # x, act_scaling_factor2 = self.act3(x, act_scaling_factor1, fc_scaling_factor1)
         # x = self.fc3(x)
-        return x, act_scaling_factor1, fc_scaling_factor1
+        return x, act_scaling_factor2, fc_scaling_factor2
 
 def make_proba_distribution_quant(
     action_space: spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
@@ -132,9 +136,10 @@ class QuantizedMlpExtractor(MlpExtractor):
         super().__init__(feature_dim, net_arch, activation_fn, device)
 
         feed_forward = nn.Sequential(
-            nn.Linear(feature_dim, 128),      # model[0]
+            nn.Linear(feature_dim, 256),      # model[0]
             nn.ReLU(),            # model[1]
-            nn.Linear(128, 128), 
+            nn.Linear(256, int(256/2**3)),
+            nn.Linear(int(256/2**3), 256),
             nn.ReLU()
         )
         # Replace or wrap the networks with quantized versions
@@ -170,7 +175,7 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
 
         self.mlp_extractor = QuantizedMlpExtractor(
             self.features_dim,
-            net_arch= dict(pi=[128, 128], vf=[128, 128]),
+            net_arch= dict(pi=[256, 256], vf=[256, 256]),
             activation_fn=self.activation_fn,
             device=self.device,
         )
@@ -270,15 +275,6 @@ def main():
     # Create the MuJoCo ant environment
     env = gym.make('Ant-v5')
     eval_env = gym.make('Ant-v5')
-
-    env = make_vec_env('Ant-v5', 
-                       n_envs=8, 
-                       vec_env_cls=SubprocVecEnv)
-    
-    eval_env = make_vec_env('Ant-v5', 
-                       n_envs=1,
-                       vec_env_cls=SubprocVecEnv)
-
     # Create a dummy config for quantization (customize as needed)
     cfg = {
         "quant_act": True,
@@ -288,13 +284,12 @@ def main():
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./logs_ant_trial/best_model_fixscale_2/",
-        log_path="./logs_ant_trial/fix_results/256_256/",
+        best_model_save_path="./logs_ant/best_model_fixscale_lora_2power3_2/",
+        log_path="./logs_ant/results_lora_2/256_32_256/",
         eval_freq=10000,
         deterministic=True,
         render=False
     )
-
 
     # Define PPO agent with your quantized policy
     model = PPO(
@@ -302,7 +297,7 @@ def main():
         env=env,
         policy_kwargs={"cfg": cfg},
         verbose=1,
-        tensorboard_log="./ppo_tensorboard_ant/"
+        tensorboard_log="./ppo_tensorboard_ant_lora/"
     )
 
     # Train the agent
