@@ -24,7 +24,7 @@ os.environ["MUJOCO_GL"] = "egl"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-FIX_SCALE = True
+FIX_SCALE = False
 
 Schedule = Callable[[float], float]
 
@@ -143,6 +143,8 @@ class QuantizedMlpExtractor(MlpExtractor):
 
     def forward_actor(self, features: th.Tensor):
         return self.policy_net(features)
+    
+
 
 class QuantizedActorCriticPolicy(ActorCriticPolicy):
     def __init__(self, observation_space, action_space, lr_schedule,use_sde, cfg, **kwargs):
@@ -272,7 +274,7 @@ def main():
     eval_env = gym.make('Ant-v5')
 
     env = make_vec_env('Ant-v5', 
-                       n_envs=8, 
+                       n_envs=1, 
                        vec_env_cls=SubprocVecEnv)
     
     eval_env = make_vec_env('Ant-v5', 
@@ -288,8 +290,8 @@ def main():
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./logs_ant_trial/best_model_fixscale_2/",
-        log_path="./logs_ant_trial/fix_results/256_256/",
+        best_model_save_path="./logs_ant_trial/best_model_unfix/",
+        log_path="./logs_ant_trial/unfix_results/256_256/",
         eval_freq=10000,
         deterministic=True,
         render=False
@@ -302,11 +304,11 @@ def main():
         env=env,
         policy_kwargs={"cfg": cfg},
         verbose=1,
-        tensorboard_log="./ppo_tensorboard_ant/"
+        tensorboard_log="./ppo_tensorboard_ant/unfix_scales/"
     )
 
     # Train the agent
-    model.learn(total_timesteps=10000000, callback=eval_callback)
+    model.learn(total_timesteps=5000000, callback=eval_callback)
 
     # Save the trained model
     model.save("ppo_ant_quant")

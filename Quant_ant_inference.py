@@ -8,6 +8,23 @@ import io
 from Ant_quant import *
 # model = PPO.load("/home/ritwik/MuJoCo_Quant/logs_ant/best_model_fixscale_1/best_model", env=env)
 
+cfg = {
+    "quant_act": True,
+    "quant_weights": True,
+    "activation": "relu",
+}
+env = gym.make("Ant-v5")
+model_path = "/home/ritwik/MuJoCo_Quant/logs_ant/best_model_fixscale_1/best_model.zip"
+model = PPO.load(
+    model_path,
+    env=env,
+    custom_objects={
+        "policy_class": QuantizedActorCriticPolicy,
+        "policy_kwargs": {"cfg": cfg}
+    },
+    strict=False
+)
+
 def forward_pass(obs):
     obs_quant = torch.round(torch.tensor(obs)*2**e0/m0).to(torch.float32)
     obs_quant = torch.clip(obs_quant, -127, 127)
@@ -113,7 +130,8 @@ env = gym.make('Ant-v5')
 obs = env.reset()
 
 import imageio
-
+action_space_high = env.action_space.high
+action_space_low = env.action_space.low
 frames = []
 for _ in range(10):
     timestep=0
@@ -125,8 +143,11 @@ for _ in range(10):
             action = forward_pass(obs[0])*Sx3
         else:
             action = forward_pass(obs)*Sx3
-        action = torch.tanh(action) * torch.tensor(env.action_space.high)
+        
+        # action = torch.tanh(action) * torch.tensor(env.action_space.high)
         action = action.cpu().numpy()
+        
+        action = np.clip(action, action_space_low, action_space_high)
         # if timestep ==0:
         #     action, _ = model.policy.predict(obs[0], deterministic=True)
         # else:
