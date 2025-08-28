@@ -65,7 +65,7 @@ class QuantLinear(Module):
         if self.per_channel:
             self.register_buffer('fc_scaling_factor', torch.zeros(self.out_features))
         else:
-            self.register_buffer('fc_scaling_factor', torch.zeros(1))
+            self.register_buffer('fc_scaling_factor', torch.tensor(0.0))
         self.weight = Parameter(linear.weight.data.clone())
         self.register_buffer('weight_integer', torch.zeros_like(self.weight))
         self.register_buffer('bias_integer', torch.zeros_like(linear.bias))
@@ -188,19 +188,19 @@ class QuantAct(Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if fixed_bounds:
             # make a torch tensor containing fixed_min and fixed_max
-            self.register_buffer('x_min', torch.zeros(1, device=self.device))
-            self.register_buffer('x_max', torch.zeros(1, device=self.device))
+            self.register_buffer('x_min', torch.tensor(0.0, device=self.device))
+            self.register_buffer('x_max', torch.tensor(0.0, device=self.device))
             self.x_min += fixed_min
             self.x_max += fixed_max
             # self.register_buffer('x_min', torch.tensor([fixed_min], device=self.device))
             # self.register_buffer('x_max', torch.tensor([fixed_max], device=self.device))
         else:
-            self.register_buffer('x_min', torch.zeros(1, device=self.device))
-            self.register_buffer('x_max', torch.zeros(1, device=self.device))
-        self.register_buffer('act_scaling_factor', torch.zeros(1))
+            self.register_buffer('x_min', torch.tensor(0.0, device=self.device))
+            self.register_buffer('x_max', torch.tensor(0.0, device=self.device))
+        self.register_buffer('act_scaling_factor', torch.tensor(0.0))
 
-        self.register_buffer('pre_weight_scaling_factor', torch.ones(1))
-        self.register_buffer('identity_weight_scaling_factor', torch.ones(1))
+        self.register_buffer('pre_weight_scaling_factor', torch.tensor(1.0))
+        self.register_buffer('identity_weight_scaling_factor', torch.tensor(1.0))
 
     def __repr__(self):
         return "{0}(activation_bit={1}, " \
@@ -389,9 +389,9 @@ class QuantAct_Concat(Module):
         self.fixed_point_quantization = fixed_point_quantization
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.register_buffer('x_min', torch.zeros(1))
-        self.register_buffer('x_max', torch.zeros(1))
-        self.register_buffer('act_scaling_factor', torch.zeros(1))
+        self.register_buffer('x_min', torch.tensor(0.0))
+        self.register_buffer('x_max', torch.tensor(0.0))
+        self.register_buffer('act_scaling_factor', torch.tensor(0.0))
 
         self.register_buffer('pre_weight_scaling_factor', torch.ones(1))
         self.register_buffer('identity_weight_scaling_factor', torch.ones(1))

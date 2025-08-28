@@ -19,12 +19,14 @@ from typing import Callable, Dict, Any, Optional
 from stable_baselines3.common.type_aliases import PyTorchObs, Schedule
 import imageio
 from datetime import datetime
+import matplotlib.pyplot as plt
 import os
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 now = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-FIX_SCALE = False
+FIX_SCALE = True
+HIDDEN_SIZE = 256
 
 Schedule = Callable[[float], float]
 
@@ -132,9 +134,9 @@ class QuantizedMlpExtractor(MlpExtractor):
         super().__init__(feature_dim, net_arch, activation_fn, device)
 
         feed_forward = nn.Sequential(
-            nn.Linear(feature_dim, 128),      # model[0]
+            nn.Linear(feature_dim, HIDDEN_SIZE),      # model[0]
             nn.ReLU(),            # model[1]
-            nn.Linear(128, 128), 
+            nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE), 
             nn.ReLU()
         )
         # Replace or wrap the networks with quantized versions
@@ -172,7 +174,7 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
 
         self.mlp_extractor = QuantizedMlpExtractor(
             self.features_dim,
-            net_arch= dict(pi=[128, 128], vf=[128, 128]),
+            net_arch= dict(pi=[HIDDEN_SIZE, HIDDEN_SIZE], vf=[HIDDEN_SIZE, HIDDEN_SIZE]),
             activation_fn=self.activation_fn,
             device=self.device,
         )
@@ -244,6 +246,25 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
         actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
         return actions, values, log_prob
     
+    def predict(self, obs: th.Tensor, deterministic: bool = True):
+
+        """
+        Forward pass in all the networks (actor and critic)
+
+        :param obs: Observation
+        :param deterministic: Whether to sample or use deterministic actions
+        :return: action, value and log probability of the action
+        """
+        # Preprocess the observation if needed
+        with th.no_grad():
+            pi_features = th.tensor(obs, dtype=th.float32)
+            latent_pi, act_scaling, fc_scaling = self.mlp_extractor.forward_actor(pi_features)
+            distribution = self._get_action_dist_from_latent(latent_pi, act_scaling, fc_scaling)
+            actions = distribution.get_actions(deterministic=deterministic)
+            log_prob = distribution.log_prob(actions)
+            actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
+        return actions
+    
     def evaluate_actions(self, obs: PyTorchObs, actions: th.Tensor):
         """
         Evaluate actions according to the current policy,
@@ -270,16 +291,23 @@ class QuantizedActorCriticPolicy(ActorCriticPolicy):
 
 def main():
     # Create the MuJoCo ant environment
+    if FIX_SCALE==True:
+        fs = "fixscale"
+    else:
+        fs = "nonfixscale"
+    hs = str(HIDDEN_SIZE)
+    model_path = f"./logs_ant_new/_{fs}_{hs}_{now}/"
+    os.makedirs(f"./logs_ant_new/_{fs}_{hs}_{now}/", exist_ok=True)
     env = gym.make('Ant-v5')
     eval_env = gym.make('Ant-v5')
 
     env = make_vec_env('Ant-v5', 
-                       n_envs=1, 
+                       n_envs=8, 
                        vec_env_cls=SubprocVecEnv)
     
-    eval_env = make_vec_env('Ant-v5', 
-                       n_envs=1,
-                       vec_env_cls=SubprocVecEnv)
+    # eval_env = make_vec_env('Ant-v5', 
+    #                    n_envs=1,
+    #                    vec_env_cls=SubprocVecEnv)
 
     # Create a dummy config for quantization (customize as needed)
     cfg = {
@@ -290,8 +318,8 @@ def main():
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./logs_ant_trial/best_model_unfix/",
-        log_path="./logs_ant_trial/unfix_results/256_256/",
+        best_model_save_path=model_path+"best_model/",
+        log_path=model_path+"results/",
         eval_freq=10000,
         deterministic=True,
         render=False
@@ -304,11 +332,62 @@ def main():
         env=env,
         policy_kwargs={"cfg": cfg},
         verbose=1,
-        tensorboard_log="./ppo_tensorboard_ant/unfix_scales/"
+        tensorboard_log="./ppo_tensorboard_ant/trail/"
     )
 
     # Train the agent
-    model.learn(total_timesteps=5000000, callback=eval_callback)
+    total_iterations = 70
+    timesteps_per_iter = 80_000
+    iter_save = 1
+    reward_mean = []
+    reward_std = []
+
+    for iter in range(total_iterations):
+        print(f"\n=== Iteration {iter + 1}/{total_iterations} ===")
+        
+        # Train for 10,000 timesteps
+        model.learn(total_timesteps=timesteps_per_iter,
+                    reset_num_timesteps=False,    # continue from previous timestep count
+                    tb_log_name=hs+"_"+fs+str(now))
+        
+        # Save model
+        if iter%iter_save == 0:
+            # model_path = f"Quant_ant_{now}"
+            model.save(model_path+"Quant_ant_"+str(iter))
+            np.savez(model_path+"reward_over_time_ant_"+str(now)+".npz", mean=np.array(reward_mean), std = np.array(reward_std))
+            print(f"Model saved to {model_path}")
+            plt.plot(np.load(model_path+"/reward_over_time_ant_"+str(now)+".npz")['mean'])
+            plt.xlabel('Evaluation Iteration (x'+str(timesteps_per_iter*iter_save)+' timesteps)')
+            plt.ylabel('Mean Reward over 5 episodes')
+            plt.grid()
+            plt.savefig(model_path+"/reward_plot_ant_"+str(iter)+"_"+str(now)+".png")
+        # --- Manual Evaluation (5 episodes) ---
+        # if iter>=300:
+        #     env = QDAntBulletEnv_grav()
+        #     model.set_env(env)
+        #     obs = env.reset()
+        # else:
+        # env = Monitor(QDAntBulletEnv_grav())
+        total_rewards = []
+        
+        for ep in range(5):
+            obs = eval_env.reset()[0]
+            done = False
+            ep_reward = 0
+            t = 0
+            while not done:
+                action = model.policy.predict(obs, deterministic=True)
+                obs, reward, done, truncated, info = eval_env.step(action.reshape(-1,).cpu().numpy())
+                ep_reward += reward
+                t +=1 
+                if t == 1000:
+                    done = True
+                # env.render()
+            print(f"Episode {ep + 1} Reward: {ep_reward} Steps: {t}")
+            total_rewards.append(ep_reward)
+        reward_mean.append(np.mean(total_rewards))
+        reward_std.append(np.std(total_rewards))  
+        
 
     # Save the trained model
     model.save("ppo_ant_quant")
